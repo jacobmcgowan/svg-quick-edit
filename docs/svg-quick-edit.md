@@ -1,6 +1,6 @@
 ## svg-quick-edit
 
-Edits an attribute of paths in SVG files.
+Edits attributes of paths in SVG files.
 
 ### Synopsis
 
