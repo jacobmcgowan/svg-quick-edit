@@ -24,18 +24,18 @@ jobs:
 
       - name: Build
         run: |
-          cd docgen/cli-docgen
-          go build -o cli-docgen
+          cd docgen
+          go build -o docgen
 
       - name: Generate Documentation
         run: |
-          cd docgen/cli-docgen
-          ./cli-docgen
+          cd docgen/
+          ./docgen
 
       - name: Commit and Push Changes
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add services/cli/docs
+          git add docs
           git commit -m "Update generated CLI documentation."
           git push
