@@ -24,7 +24,7 @@ var suffix string
 
 var rootCmd = &cobra.Command{
 	Use:   "svg-quick-edit",
-	Short: "Edits an attribute of paths in SVG files.",
+	Short: "Edits attributes of paths in SVG files.",
 	Long: `svg-quick-edit is a CLI tool that allows you to quickly edit
 attributes of paths in SVG files. It is useful for batch processing SVG files
 to change attributes like 'fill', 'stroke', etc. The tool takes a path to an SVG
