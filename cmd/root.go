@@ -157,7 +157,7 @@ func editFile(filepath string) error {
 	}
 
 	if verbose {
-		fmt.Printf("Modified SVG file saved as: %s\n", newFilepath)
+		fmt.Printf("Modified SVG file saved as %s\n", newFilepath)
 	}
 
 	return nil
