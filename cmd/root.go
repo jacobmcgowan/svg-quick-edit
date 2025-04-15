@@ -21,6 +21,7 @@ var values []string
 var path string
 var exclude string
 var suffix string
+var verbose bool
 
 var rootCmd = &cobra.Command{
 	Use:   "svg-quick-edit",
@@ -91,7 +92,7 @@ specified using the -s flag. If not specified, the default suffix is "new".
 func Execute() {
 	err := rootCmd.Execute()
 	if err != nil {
-		log.Printf("Failed to edit SVG file(s): %s", err.Error())
+		log.Printf("Failed to edit SVG file(s): %s\n", err.Error())
 		os.Exit(1)
 	}
 }
@@ -111,6 +112,7 @@ func init() {
 	rootCmd.MarkFlagRequired("path")
 	rootCmd.Flags().StringVarP(&exclude, "exclude", "e", "", "The regex of files to exclude.")
 	rootCmd.Flags().StringVarP(&suffix, "suffix", "s", "new", "The suffix to add to the modified SVG file name.")
+	rootCmd.Flags().BoolVar(&verbose, "verbose", false, "Enable verbose output.")
 }
 
 func editFile(filepath string) error {
@@ -152,6 +154,10 @@ func editFile(filepath string) error {
 	newFilepath := filepath[:i] + "_" + suffix + ".svg"
 	if err = os.WriteFile(newFilepath, []byte(doc.OutputXML(true)), 0644); err != nil {
 		return fmt.Errorf("failed to write modified SVG file %s: %s", newFilepath, err.Error())
+	}
+
+	if verbose {
+		fmt.Printf("Modified SVG file saved as %s\n", newFilepath)
 	}
 
 	return nil
