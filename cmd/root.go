@@ -135,11 +135,17 @@ func editFile(filepath string) error {
 		return fmt.Errorf("failed to parse SVG file: %s", err.Error())
 	}
 
+	edited := false
 	for i, find := range finds {
 		paths := xmlquery.Find(doc, "//path[@"+find+"]")
 		for _, path := range paths {
 			path.SetAttr(replaces[i], values[i])
+			edited = true
 		}
+	}
+
+	if !edited {
+		return nil
 	}
 
 	i := strings.LastIndex(filepath, ".svg")
