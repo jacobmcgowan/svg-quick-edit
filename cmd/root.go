@@ -15,12 +15,14 @@ import (
 	"github.com/spf13/cobra/doc"
 )
 
+const FILE_EXT = ".svg"
+
 var finds []string
 var replaces []string
 var values []string
+var suffixes []string
 var path string
 var exclude string
-var suffix string
 var verbose bool
 
 var rootCmd = &cobra.Command{
@@ -33,34 +35,34 @@ file or directory containing SVG files, and modifies the specified attributes
 for all paths in the SVG file(s).
 
 Example usage:
-svg-quick-edit -f "class='aac-skin-fill'" -r fill -v "#e3ab72" -p "/path/to/svg/files"
+svg-quick-edit -f "class='aac-skin-fill'" -r fill -v "#e3ab72" -s new -p "/path/to/svg/files"
 
 Will replace the 'fill' attribute of all paths with the class 'aac-skin-fill' in
-the specified SVG files with the new value '#e3ab72'.
+the specified SVG files with the new value '#e3ab72' and saved the modified
+images to new files with a suffix of "_new.svg". Images that are not modified
+will not have a new file created.
 
 You can also specify multiple find, replace, and value arguments to replace
 attributes for multiple different paths in the SVG files. The number of find,
 replace, and value arguments must be the same and must be in the same order.
 For example:
 
-svg-quick-edit -f "class='aac-skin-fill'" -r fill -v "#e3ab72" -f "class='aac-hair-fill'" -r fill -v "#a65e26" -p "/path/to/svg/files"
+svg-quick-edit -f "class='aac-skin-fill'" -r fill -v "#e3ab72" -s "skin-e3ab72" -f "class='aac-hair-fill'" -r fill -v "#a65e26" -s "hair-a65e26" -p "/path/to/svg/files"
 
 Will replace the 'fill' attribute of all paths with the class
 'aac-skin-fill' with the new value '#e3ab72' and the 'fill' attribute of all
-paths with the class 'aac-hair-fill' with the new value '#a65e26'.
-
-Output:
-The modified SVG file(s) will be saved with a new name, which is the original
-file name with a suffix added. For example, if the original filename is
-"icon.svg", the modified file will be saved as "icon_new.svg". The suffix can be
-specified using the -s flag. If not specified, the default suffix is "new".
+paths with the class 'aac-hair-fill' with the new value '#a65e26'. The modified
+images will be saved to new files with the suffixes
+"_skin-e3ab72_hair-a65e26.svg" if both paths are found in the SVG file or
+"_skin-e3ab72.svg" if only the first path is found and "_hair-a65e26.svg" if
+only the second path is found.
 `,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if len(finds) != len(replaces) || len(finds) != len(values) {
-			return fmt.Errorf("the number of find, replace, and value arguments must be the same")
+		if len(finds) != len(replaces) || len(finds) != len(values) || len(finds) != len(suffixes) {
+			return fmt.Errorf("the number of find, replace, value, and suffix arguments must be the same")
 		}
 
-		if isFile := strings.HasSuffix(path, ".svg"); isFile {
+		if isFile := strings.HasSuffix(path, FILE_EXT); isFile {
 			if err := editFile(path); err != nil {
 				return fmt.Errorf("failed to edit SVG file: %s", err.Error())
 			}
@@ -76,7 +78,7 @@ specified using the -s flag. If not specified, the default suffix is "new".
 					return fmt.Errorf("failed to get file info: %s", err.Error())
 				}
 
-				if !fileInfo.IsDir() && strings.HasSuffix(fileInfo.Name(), ".svg") {
+				if !fileInfo.IsDir() && strings.HasSuffix(fileInfo.Name(), FILE_EXT) {
 					filepath := path + "/" + fileInfo.Name()
 					if err := editFile(filepath); err != nil {
 						return fmt.Errorf("failed to edit SVG file %s: %s", filepath, err.Error())
@@ -103,16 +105,19 @@ func GenMarkdownTree(path string) error {
 
 func init() {
 	rootCmd.Flags().StringSliceVarP(&finds, "find", "f", []string{}, "The attribute to find paths with.")
-	rootCmd.MarkFlagRequired("find")
 	rootCmd.Flags().StringSliceVarP(&replaces, "replace", "r", []string{}, "The attribute to replace the value for.")
-	rootCmd.MarkFlagRequired("replace")
 	rootCmd.Flags().StringSliceVarP(&values, "value", "v", []string{}, "The new value to set the attribute to.")
-	rootCmd.MarkFlagRequired("value")
+	rootCmd.Flags().StringSliceVarP(&suffixes, "suffix", "s", []string{}, "The suffix to add to the modified SVG file name.")
 	rootCmd.Flags().StringVarP(&path, "path", "p", "", "The path to the SVG file(s).")
-	rootCmd.MarkFlagRequired("path")
 	rootCmd.Flags().StringVarP(&exclude, "exclude", "e", "", "The regex of files to exclude.")
-	rootCmd.Flags().StringVarP(&suffix, "suffix", "s", "new", "The suffix to add to the modified SVG file name.")
 	rootCmd.Flags().BoolVar(&verbose, "verbose", false, "Enable verbose output.")
+
+	rootCmd.MarkFlagRequired("find")
+	rootCmd.MarkFlagRequired("replace")
+	rootCmd.MarkFlagRequired("value")
+	rootCmd.MarkFlagRequired("suffix")
+	rootCmd.MarkFlagRequired("path")
+	rootCmd.MarkFlagsRequiredTogether("find", "replace", "value", "suffix")
 }
 
 func editFile(filepath string) error {
@@ -137,21 +142,32 @@ func editFile(filepath string) error {
 		return fmt.Errorf("failed to parse SVG file: %s", err.Error())
 	}
 
-	edited := false
+	edited := make([]bool, len(suffixes))
 	for i, find := range finds {
 		paths := xmlquery.Find(doc, "//path[@"+find+"]")
 		for _, path := range paths {
 			path.SetAttr(replaces[i], values[i])
-			edited = true
+			edited[i] = true
 		}
 	}
 
-	if !edited {
+	suffix := ""
+	for i, didEdit := range edited {
+		if didEdit {
+			suffix = suffix + "_" + suffixes[i]
+		}
+	}
+
+	if suffix == "" {
+		if verbose {
+			fmt.Printf("No modifications were made in %s\n", filepath)
+		}
+
 		return nil
 	}
 
-	i := strings.LastIndex(filepath, ".svg")
-	newFilepath := filepath[:i] + "_" + suffix + ".svg"
+	i := strings.LastIndex(filepath, FILE_EXT)
+	newFilepath := filepath[:i] + suffix + filepath[i:]
 	if err = os.WriteFile(newFilepath, []byte(doc.OutputXML(true)), 0644); err != nil {
 		return fmt.Errorf("failed to write modified SVG file %s: %s", newFilepath, err.Error())
 	}
