@@ -1,12 +1,7 @@
-/*
-Copyright © 2025 NAME HERE <EMAIL ADDRESS>
-*/
 package cmd
 
 import (
 	"fmt"
-	"log"
-	"os"
 	"regexp"
 	"strings"
 
@@ -60,31 +55,7 @@ images will be saved to new files with the suffixes
 only the second path is found.
 `,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if len(finds) != len(replaces) || len(finds) != len(values) || len(finds) != len(suffixes) {
-			return fmt.Errorf("the number of find, replace, value, and suffix arguments must be the same")
-		}
-
-		if isFile := strings.HasSuffix(path, FILE_EXT); isFile {
-			if err := editFile(path); err != nil {
-				return fmt.Errorf("failed to edit SVG file: %s", err.Error())
-			}
-		} else {
-			entries, err := afero.ReadDir(fs, path)
-			if err != nil {
-				return fmt.Errorf("failed to read directory: %s", err.Error())
-			}
-
-			for _, fileInfo := range entries {
-				if !fileInfo.IsDir() && strings.HasSuffix(fileInfo.Name(), FILE_EXT) {
-					filepath := path + "/" + fileInfo.Name()
-					if err := editFile(filepath); err != nil {
-						return fmt.Errorf("failed to edit SVG file %s: %s", filepath, err.Error())
-					}
-				}
-			}
-		}
-
-		return nil
+		return execute()
 	},
 }
 
@@ -92,17 +63,17 @@ func Init(appFs afero.Fs) {
 	fs = appFs
 }
 
-func Execute() {
+func Execute() error {
 	if fs == nil {
-		log.Print("File system not initialized. Please call Init() before Execute().")
-		os.Exit(1)
+		return fmt.Errorf("file system not initialized")
 	}
 
 	err := rootCmd.Execute()
 	if err != nil {
-		log.Printf("Failed to edit SVG file(s): %s\n", err.Error())
-		os.Exit(1)
+		return fmt.Errorf("failed to edit SVG file(s): %s", err.Error())
 	}
+
+	return nil
 }
 
 func GenMarkdownTree(path string) error {
@@ -124,6 +95,34 @@ func init() {
 	rootCmd.MarkFlagRequired("suffix")
 	rootCmd.MarkFlagRequired("path")
 	rootCmd.MarkFlagsRequiredTogether("find", "replace", "value", "suffix")
+}
+
+func execute() error {
+	if len(finds) != len(replaces) || len(finds) != len(values) || len(finds) != len(suffixes) {
+		return fmt.Errorf("the number of find, replace, value, and suffix arguments must be the same")
+	}
+
+	if isFile := strings.HasSuffix(path, FILE_EXT); isFile {
+		if err := editFile(path); err != nil {
+			return fmt.Errorf("failed to edit SVG file: %s", err.Error())
+		}
+	} else {
+		entries, err := afero.ReadDir(fs, path)
+		if err != nil {
+			return fmt.Errorf("failed to read directory: %s", err.Error())
+		}
+
+		for _, fileInfo := range entries {
+			if !fileInfo.IsDir() && strings.HasSuffix(fileInfo.Name(), FILE_EXT) {
+				filepath := path + "/" + fileInfo.Name()
+				if err := editFile(filepath); err != nil {
+					return fmt.Errorf("failed to edit SVG file %s: %s", filepath, err.Error())
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 func editFile(filepath string) error {
