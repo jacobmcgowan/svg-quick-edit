@@ -11,12 +11,14 @@ import (
 	"strings"
 
 	"github.com/antchfx/xmlquery"
+	"github.com/spf13/afero"
 	"github.com/spf13/cobra"
 	"github.com/spf13/cobra/doc"
 )
 
 const FILE_EXT = ".svg"
 
+var fs afero.Fs
 var finds []string
 var replaces []string
 var values []string
@@ -67,17 +69,12 @@ only the second path is found.
 				return fmt.Errorf("failed to edit SVG file: %s", err.Error())
 			}
 		} else {
-			entries, err := os.ReadDir(path)
+			entries, err := afero.ReadDir(fs, path)
 			if err != nil {
 				return fmt.Errorf("failed to read directory: %s", err.Error())
 			}
 
-			for _, entry := range entries {
-				fileInfo, err := entry.Info()
-				if err != nil {
-					return fmt.Errorf("failed to get file info: %s", err.Error())
-				}
-
+			for _, fileInfo := range entries {
 				if !fileInfo.IsDir() && strings.HasSuffix(fileInfo.Name(), FILE_EXT) {
 					filepath := path + "/" + fileInfo.Name()
 					if err := editFile(filepath); err != nil {
@@ -91,7 +88,16 @@ only the second path is found.
 	},
 }
 
+func Init(appFs afero.Fs) {
+	fs = appFs
+}
+
 func Execute() {
+	if fs == nil {
+		log.Print("File system not initialized. Please call Init() before Execute().")
+		os.Exit(1)
+	}
+
 	err := rootCmd.Execute()
 	if err != nil {
 		log.Printf("Failed to edit SVG file(s): %s\n", err.Error())
@@ -131,7 +137,7 @@ func editFile(filepath string) error {
 		}
 	}
 
-	file, err := os.Open(filepath)
+	file, err := fs.Open(filepath)
 	if err != nil {
 		return fmt.Errorf("failed to open SVG file: %s", err.Error())
 	}
@@ -168,7 +174,7 @@ func editFile(filepath string) error {
 
 	i := strings.LastIndex(filepath, FILE_EXT)
 	newFilepath := filepath[:i] + suffix + filepath[i:]
-	if err = os.WriteFile(newFilepath, []byte(doc.OutputXML(true)), 0644); err != nil {
+	if err = afero.WriteFile(fs, newFilepath, []byte(doc.OutputXML(true)), 0644); err != nil {
 		return fmt.Errorf("failed to write modified SVG file %s: %s", newFilepath, err.Error())
 	}
 
