@@ -1,22 +1,19 @@
-/*
-Copyright © 2025 NAME HERE <EMAIL ADDRESS>
-*/
 package cmd
 
 import (
 	"fmt"
-	"log"
-	"os"
 	"regexp"
 	"strings"
 
 	"github.com/antchfx/xmlquery"
+	"github.com/spf13/afero"
 	"github.com/spf13/cobra"
 	"github.com/spf13/cobra/doc"
 )
 
 const FILE_EXT = ".svg"
 
+var fs afero.Fs
 var finds []string
 var replaces []string
 var values []string
@@ -58,45 +55,25 @@ images will be saved to new files with the suffixes
 only the second path is found.
 `,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if len(finds) != len(replaces) || len(finds) != len(values) || len(finds) != len(suffixes) {
-			return fmt.Errorf("the number of find, replace, value, and suffix arguments must be the same")
-		}
-
-		if isFile := strings.HasSuffix(path, FILE_EXT); isFile {
-			if err := editFile(path); err != nil {
-				return fmt.Errorf("failed to edit SVG file: %s", err.Error())
-			}
-		} else {
-			entries, err := os.ReadDir(path)
-			if err != nil {
-				return fmt.Errorf("failed to read directory: %s", err.Error())
-			}
-
-			for _, entry := range entries {
-				fileInfo, err := entry.Info()
-				if err != nil {
-					return fmt.Errorf("failed to get file info: %s", err.Error())
-				}
-
-				if !fileInfo.IsDir() && strings.HasSuffix(fileInfo.Name(), FILE_EXT) {
-					filepath := path + "/" + fileInfo.Name()
-					if err := editFile(filepath); err != nil {
-						return fmt.Errorf("failed to edit SVG file %s: %s", filepath, err.Error())
-					}
-				}
-			}
-		}
-
-		return nil
+		return execute()
 	},
 }
 
-func Execute() {
+func Init(appFs afero.Fs) {
+	fs = appFs
+}
+
+func Execute() error {
+	if fs == nil {
+		return fmt.Errorf("file system not initialized")
+	}
+
 	err := rootCmd.Execute()
 	if err != nil {
-		log.Printf("Failed to edit SVG file(s): %s\n", err.Error())
-		os.Exit(1)
+		return fmt.Errorf("failed to edit SVG file(s): %s", err.Error())
 	}
+
+	return nil
 }
 
 func GenMarkdownTree(path string) error {
@@ -120,6 +97,34 @@ func init() {
 	rootCmd.MarkFlagsRequiredTogether("find", "replace", "value", "suffix")
 }
 
+func execute() error {
+	if len(finds) != len(replaces) || len(finds) != len(values) || len(finds) != len(suffixes) {
+		return fmt.Errorf("the number of find, replace, value, and suffix arguments must be the same")
+	}
+
+	if isFile := strings.HasSuffix(path, FILE_EXT); isFile {
+		if err := editFile(path); err != nil {
+			return fmt.Errorf("failed to edit SVG file: %s", err.Error())
+		}
+	} else {
+		entries, err := afero.ReadDir(fs, path)
+		if err != nil {
+			return fmt.Errorf("failed to read directory: %s", err.Error())
+		}
+
+		for _, fileInfo := range entries {
+			if !fileInfo.IsDir() && strings.HasSuffix(fileInfo.Name(), FILE_EXT) {
+				filepath := path + "/" + fileInfo.Name()
+				if err := editFile(filepath); err != nil {
+					return fmt.Errorf("failed to edit SVG file %s: %s", filepath, err.Error())
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
 func editFile(filepath string) error {
 	if exclude != "" {
 		shouldExclude, err := regexp.MatchString(exclude, filepath)
@@ -131,7 +136,7 @@ func editFile(filepath string) error {
 		}
 	}
 
-	file, err := os.Open(filepath)
+	file, err := fs.Open(filepath)
 	if err != nil {
 		return fmt.Errorf("failed to open SVG file: %s", err.Error())
 	}
@@ -168,7 +173,7 @@ func editFile(filepath string) error {
 
 	i := strings.LastIndex(filepath, FILE_EXT)
 	newFilepath := filepath[:i] + suffix + filepath[i:]
-	if err = os.WriteFile(newFilepath, []byte(doc.OutputXML(true)), 0644); err != nil {
+	if err = afero.WriteFile(fs, newFilepath, []byte(doc.OutputXML(true)), 0644); err != nil {
 		return fmt.Errorf("failed to write modified SVG file %s: %s", newFilepath, err.Error())
 	}
 
