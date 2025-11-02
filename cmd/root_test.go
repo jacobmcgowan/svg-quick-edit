@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"log"
 	"testing"
 
 	"github.com/spf13/afero"
@@ -9,7 +10,8 @@ import (
 
 func TestExecute(t *testing.T) {
 	fs := afero.NewMemMapFs()
-	Init(fs)
+	fakeLog := log.New(nil, "", 0)
+	Init(fs, fakeLog, errorLog)
 
 	createMockFile := func(path, content string) {
 		err := afero.WriteFile(fs, path, []byte(content), 0644)

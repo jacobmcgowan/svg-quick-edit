@@ -9,9 +9,13 @@ import (
 )
 
 func main() {
-	cmd.Init(afero.NewOsFs())
+	infoLog := log.New(os.Stdout, "INFO: ", log.LstdFlags)
+	errorLog := log.New(os.Stderr, "ERROR: ", log.LstdFlags)
+	fatalLog := log.New(os.Stderr, "FATAL: ", log.LstdFlags)
+
+	cmd.Init(afero.NewOsFs(), infoLog, errorLog)
 	if err := cmd.Execute(); err != nil {
-		log.Printf("Error: %s", err.Error())
+		fatalLog.Printf("Error editing files: %s", err.Error())
 		os.Exit(1)
 	}
 }
