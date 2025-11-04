@@ -1,15 +1,35 @@
 package cmd
 
 import (
+	"log"
 	"testing"
 
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
 )
 
+type fakeWriter struct {
+	Logs []string
+}
+
+func (fw *fakeWriter) Write(p []byte) (n int, err error) {
+	fw.Logs = append(fw.Logs, string(p))
+	return len(p), nil
+}
+
 func TestExecute(t *testing.T) {
 	fs := afero.NewMemMapFs()
-	Init(fs)
+	fakeStdout := fakeWriter{}
+	fakeStderr := fakeWriter{}
+	fakeInfoLog := log.New(&fakeStdout, "", 0)
+	fakeErrorLog := log.New(&fakeStderr, "", 0)
+
+	Init(fs, fakeInfoLog, fakeErrorLog)
+
+	cleanLogs := func() {
+		fakeStdout.Logs = []string{}
+		fakeStderr.Logs = []string{}
+	}
 
 	createMockFile := func(path, content string) {
 		err := afero.WriteFile(fs, path, []byte(content), 0644)
@@ -45,6 +65,7 @@ func TestExecute(t *testing.T) {
 	}
 
 	t.Run("SingleSVGFile", func(t *testing.T) {
+		cleanLogs()
 		filePath := "/test.svg"
 		createMockFile(filePath, `<svg><path class="test-class" fill="#ffffff" /></svg>`)
 
@@ -64,6 +85,7 @@ func TestExecute(t *testing.T) {
 	})
 
 	t.Run("DirectoryWithSVGFiles", func(t *testing.T) {
+		cleanLogs()
 		dirPath := "/svg-files"
 		fs.Mkdir(dirPath, 0755)
 		createMockFile(dirPath+"/file1.svg", `<svg><path class="test-class" fill="#ffffff" /></svg>`)
@@ -89,6 +111,7 @@ func TestExecute(t *testing.T) {
 	})
 
 	t.Run("ExcludeFiles", func(t *testing.T) {
+		cleanLogs()
 		dirPath := "/exclude-test"
 		fs.Mkdir(dirPath, 0755)
 		createMockFile(dirPath+"/include.svg", `<svg><path class="test-class" fill="#ffffff" /></svg>`)
@@ -112,6 +135,7 @@ func TestExecute(t *testing.T) {
 	})
 
 	t.Run("MultipleFindAndReplaces", func(t *testing.T) {
+		cleanLogs()
 		dirPath := "/multiple-replace-test"
 		fs.Mkdir(dirPath, 0755)
 		createMockFile(dirPath+"/file1.svg", `<svg><path class="a" fill="#ffffff" /></svg>`)
@@ -213,6 +237,7 @@ func TestExecute(t *testing.T) {
 	})
 
 	t.Run("FileNotFoundTest", func(t *testing.T) {
+		cleanLogs()
 		filePath := "/not-found.svg"
 
 		finds = []string{"class='test-class'"}
@@ -224,10 +249,14 @@ func TestExecute(t *testing.T) {
 
 		err := execute()
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "failed to open SVG file")
+		require.Contains(t, err.Error(), "encountered 1 error while editing SVG files")
+
+		require.Len(t, fakeStderr.Logs, 1)
+		require.Contains(t, fakeStderr.Logs[0], "failed to open SVG file")
 	})
 
 	t.Run("DirectoryNotFoundTest", func(t *testing.T) {
+		cleanLogs()
 		filePath := "/not-found"
 
 		finds = []string{"class='test-class'"}
@@ -239,10 +268,14 @@ func TestExecute(t *testing.T) {
 
 		err := execute()
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "failed to read directory")
+		require.Contains(t, err.Error(), "encountered 1 error while editing SVG files")
+
+		require.Len(t, fakeStderr.Logs, 1)
+		require.Contains(t, fakeStderr.Logs[0], "Failed to read directory")
 	})
 
 	t.Run("NonEqualArgumentsCount", func(t *testing.T) {
+		cleanLogs()
 		filePath := "/not-equal.svg"
 		createMockFile(filePath, `<svg><path class="test-class" fill="#ffffff" /></svg>`)
 

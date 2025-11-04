@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"log"
 	"regexp"
 	"strings"
 
@@ -21,6 +22,8 @@ var suffixes []string
 var path string
 var exclude string
 var verbose bool
+var infoLog *log.Logger
+var errorLog *log.Logger
 
 var rootCmd = &cobra.Command{
 	Use:   "svg-quick-edit",
@@ -59,8 +62,10 @@ only the second path is found.
 	},
 }
 
-func Init(appFs afero.Fs) {
+func Init(appFs afero.Fs, infoLogger, errorLogger *log.Logger) {
 	fs = appFs
+	infoLog = infoLogger
+	errorLog = errorLogger
 }
 
 func Execute() error {
@@ -102,49 +107,71 @@ func execute() error {
 		return fmt.Errorf("the number of find, replace, value, and suffix arguments must be the same")
 	}
 
+	editedCount := 0
+	errorCount := 0
+
 	if isFile := strings.HasSuffix(path, FILE_EXT); isFile {
-		if err := editFile(path); err != nil {
-			return fmt.Errorf("failed to edit SVG file: %s", err.Error())
+		if didEdit, err := editFile(path); err != nil {
+			errorLog.Printf("Failed to edit SVG file: %s", err.Error())
+			errorCount++
+		} else if didEdit {
+			editedCount++
 		}
 	} else {
-		entries, err := afero.ReadDir(fs, path)
-		if err != nil {
-			return fmt.Errorf("failed to read directory: %s", err.Error())
-		}
-
-		for _, fileInfo := range entries {
-			if !fileInfo.IsDir() && strings.HasSuffix(fileInfo.Name(), FILE_EXT) {
-				filepath := path + "/" + fileInfo.Name()
-				if err := editFile(filepath); err != nil {
-					return fmt.Errorf("failed to edit SVG file %s: %s", filepath, err.Error())
+		if entries, err := afero.ReadDir(fs, path); err != nil {
+			errorLog.Printf("Failed to read directory: %s", err.Error())
+			errorCount++
+		} else {
+			for _, fileInfo := range entries {
+				if !fileInfo.IsDir() && strings.HasSuffix(fileInfo.Name(), FILE_EXT) {
+					filepath := path + "/" + fileInfo.Name()
+					if didEdit, err := editFile(filepath); err != nil {
+						errorLog.Printf("Failed to edit SVG file %s: %s", filepath, err.Error())
+					} else if didEdit {
+						editedCount++
+					}
 				}
 			}
+		}
+	}
+
+	if editedCount == 1 {
+		infoLog.Printf("Edited %d SVG file", editedCount)
+	} else {
+		infoLog.Printf("Edited %d SVG files", editedCount)
+	}
+
+	if errorCount > 0 {
+		if errorCount == 1 {
+			return fmt.Errorf("encountered %d error while editing SVG files", errorCount)
+		} else {
+			return fmt.Errorf("encountered %d errors while editing SVG files", errorCount)
 		}
 	}
 
 	return nil
 }
 
-func editFile(filepath string) error {
+func editFile(filepath string) (bool, error) {
 	if exclude != "" {
 		shouldExclude, err := regexp.MatchString(exclude, filepath)
 		if err != nil {
-			return fmt.Errorf("failed to compile regex %s: %s", exclude, err.Error())
+			return false, fmt.Errorf("failed to compile regex %s: %s", exclude, err.Error())
 		}
 		if shouldExclude {
-			return nil
+			return false, nil
 		}
 	}
 
 	file, err := fs.Open(filepath)
 	if err != nil {
-		return fmt.Errorf("failed to open SVG file: %s", err.Error())
+		return false, fmt.Errorf("failed to open SVG file: %s", err.Error())
 	}
 	defer file.Close()
 
 	doc, err := xmlquery.Parse(file)
 	if err != nil {
-		return fmt.Errorf("failed to parse SVG file: %s", err.Error())
+		return false, fmt.Errorf("failed to parse SVG file: %s", err.Error())
 	}
 
 	edited := make([]bool, len(suffixes))
@@ -165,21 +192,21 @@ func editFile(filepath string) error {
 
 	if suffix == "" {
 		if verbose {
-			fmt.Printf("No modifications were made in %s\n", filepath)
+			infoLog.Printf("No modifications were made in %s\n", filepath)
 		}
 
-		return nil
+		return false, nil
 	}
 
 	i := strings.LastIndex(filepath, FILE_EXT)
 	newFilepath := filepath[:i] + suffix + filepath[i:]
 	if err = afero.WriteFile(fs, newFilepath, []byte(doc.OutputXML(true)), 0644); err != nil {
-		return fmt.Errorf("failed to write modified SVG file %s: %s", newFilepath, err.Error())
+		return false, fmt.Errorf("failed to write modified SVG file %s: %s", newFilepath, err.Error())
 	}
 
 	if verbose {
-		fmt.Printf("Modified SVG file saved as %s\n", newFilepath)
+		infoLog.Printf("Modified SVG file saved as %s\n", newFilepath)
 	}
 
-	return nil
+	return true, nil
 }
