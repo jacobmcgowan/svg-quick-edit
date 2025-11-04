@@ -135,7 +135,19 @@ func execute() error {
 		}
 	}
 
-	infoLog.Printf("Edited %d SVG files with %d errors", editedCount, errorCount)
+	if editedCount == 1 {
+		infoLog.Printf("Edited %d SVG file", editedCount)
+	} else {
+		infoLog.Printf("Edited %d SVG files", editedCount)
+	}
+
+	if errorCount > 0 {
+		if errorCount == 1 {
+			return fmt.Errorf("encountered %d error while editing SVG files", errorCount)
+		} else {
+			return fmt.Errorf("encountered %d errors while editing SVG files", errorCount)
+		}
+	}
 
 	return nil
 }
